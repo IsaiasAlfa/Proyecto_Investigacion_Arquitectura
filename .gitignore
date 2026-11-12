@@ -7,3 +7,5 @@ win64/
 linux64/
 logs/
 *.log
+__pycache__/
+*.pyc
