@@ -1,0 +1,9 @@
+.venv/
+.modcache
+.package-list
+.project-properties/
+bin/
+win64/
+linux64/
+logs/
+*.log

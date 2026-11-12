@@ -1,0 +1,3 @@
+# Auto-generated file. Any changes will be overwritten!
+decl { substitute "C:\\Users\\isaia\\AppData\\Local\\Programs\\Simics\\simics-qsp-cpu-7.36.0\\targets\\qsp-x86\\qsp-client-core.simics" }
+run-script "C:\\Users\\isaia\\AppData\\Local\\Programs\\Simics\\simics-qsp-cpu-7.36.0\\targets\\qsp-x86\\qsp-client-core.simics"
