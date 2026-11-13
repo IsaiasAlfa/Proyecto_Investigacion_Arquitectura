@@ -1,0 +1,17 @@
+addi x1, x0, 12
+addi x2, x0, 5
+add x3, x1, x2
+sub x4, x1, x2
+sub x5, x2, x1
+and x6, x1, x2
+or x7, x1, x2
+xor x8, x1, x2
+addi x9, x0, -8
+sll x10, x2, x2
+srl x11, x9, x2
+sra x12, x9, x2
+slt x13, x9, x1
+sltu x14, x9, x1
+add x0, x1, x2
+add x15, x0, x2
+ebreak

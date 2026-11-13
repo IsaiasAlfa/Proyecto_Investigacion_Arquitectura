@@ -16,6 +16,26 @@
 #include "rv32-core.h"
 #include "rv32-helpers.h"
 
+static int
+alu_r(uint32 funct3, uint32 funct7, uint32 a, uint32 b, uint32 *result)
+{
+        uint32 shamt = b & 0x1fu;
+
+        switch ((funct7 << 3) | funct3) {
+                case 0x000u: *result = a + b; return 1;                         // add
+                case 0x100u: *result = a - b; return 1;                         // sub
+                case 0x001u: *result = a << shamt; return 1;                    // sll
+                case 0x002u: *result = ((int32_t)a < (int32_t)b); return 1;     // slt
+                case 0x003u: *result = (a < b); return 1;                       // sltu
+                case 0x004u: *result = a ^ b; return 1;                         // xor
+                case 0x005u: *result = a >> shamt; return 1;                    // srl
+                case 0x105u: *result = (uint32)((int32_t)a >> shamt); return 1; // sra
+                case 0x006u: *result = a | b; return 1;                         // or
+                case 0x007u: *result = a & b; return 1;                         // and
+                default: return 0;
+        }
+}
+
 void
 execute(rv32_t *cpu)
 {
@@ -55,6 +75,29 @@ execute(rv32_t *cpu)
                         imm |= 0xfffff000u;
 
                 uint32 result = reg_read_x(cpu, rs1) + imm;
+                reg_write_x(cpu, rd, result);
+                cpu->pc = pc + 4u;
+
+                increment_cycle(cpu);
+                increment_step(cpu);
+                return;
+        }
+
+        if (opcode == 0x33u) {
+                unsigned rd = (instr >> 7) & 0x1fu;
+                unsigned rs1 = (instr >> 15) & 0x1fu;
+                unsigned rs2 = (instr >> 20) & 0x1fu;
+                uint32 funct7 = instr >>25;
+                uint32 result;
+
+                if (!alu_r(funct3, funct7,
+                            reg_read_x(cpu, rs1),
+                            reg_read_x(cpu, rs2),
+                            &result)) {
+                        illegal_instruction(cpu, pc, instr);
+                        return;
+                }
+
                 reg_write_x(cpu, rd, result);
                 cpu->pc = pc + 4u;
 
