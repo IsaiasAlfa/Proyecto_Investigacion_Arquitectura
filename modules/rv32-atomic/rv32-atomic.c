@@ -19,7 +19,52 @@
 void
 execute(rv32_t *cpu)
 {
-        /* TODO */
+        uint8 bytes[4];
+        uint32 pc = cpu->pc;
+
+        // Search the instruction in memory
+        if (!read_simics_memory(cpu, pc, bytes, sizeof bytes)) {
+                rv32_halt(cpu, "instruction fetch failed");
+                return;
+        }
+
+        // Re-build the instruction in little-endian format
+        uint32 instr = (uint32)bytes[0]
+                        | ((uint32)bytes[1] << 8)
+                        | ((uint32)bytes[2] << 16)
+                        | ((uint32)bytes[3] << 24);
+
+        // EBREAK
+        if (instr == 0x00100073u) {
+                increment_cycle(cpu);
+                increment_step(cpu);
+                ebreak(cpu);
+                return;
+        }
+
+        uint32 opcode = instr & 0x7fu;
+        uint32 funct3 = (instr >> 12) & 0x7u;
+
+        // ADDI
+        if (opcode == 0x13u && funct3 == 0u) {
+                unsigned rd = (instr >> 7) & 0x1fu;
+                unsigned rs1 = (instr >> 15) & 0x1fu;
+                uint32 imm = instr >> 20;
+
+                if (imm & 0x800u)
+                        imm |= 0xfffff000u;
+
+                uint32 result = reg_read_x(cpu, rs1) + imm;
+                reg_write_x(cpu, rd, result);
+                cpu->pc = pc + 4u;
+
+                increment_cycle(cpu);
+                increment_step(cpu);
+                return;
+        }
+
+        /*TODO: Demas instrucciones*/
+        illegal_instruction(cpu, pc, instr);
 }
 
 /* Text for Simics' disassemble CLI command (e.g. "disassemble 0x0 10")
