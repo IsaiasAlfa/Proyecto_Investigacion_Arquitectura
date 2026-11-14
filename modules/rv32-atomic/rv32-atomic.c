@@ -65,16 +65,29 @@ execute(rv32_t *cpu)
         uint32 opcode = instr & 0x7fu;
         uint32 funct3 = (instr >> 12) & 0x7u;
 
-        // ADDI
-        if (opcode == 0x13u && funct3 == 0u) {
+        // Type-I
+        if (opcode == 0x13u) {
                 unsigned rd = (instr >> 7) & 0x1fu;
                 unsigned rs1 = (instr >> 15) & 0x1fu;
                 uint32 imm = instr >> 20;
+                int is_shift = (funct3 == 1u || funct3 == 5u);
+                uint32 funct7 = is_shift ? (instr >> 25) : 0u;
+                uint32 operand;
+                uint result;
 
                 if (imm & 0x800u)
                         imm |= 0xfffff000u;
 
-                uint32 result = reg_read_x(cpu, rs1) + imm;
+                // Shift only use imm[4:0]
+                operand = is_shift ? (instr >> 20) : imm;
+
+                if (!alu_r(funct3, funct7,
+                           reg_read_x(cpu, rs1),
+                           operand, &result)) {
+                        illegal_instruction(cpu, pc, instr);
+                        return;
+                }
+
                 reg_write_x(cpu, rd, result);
                 cpu->pc = pc + 4u;
 
@@ -83,6 +96,7 @@ execute(rv32_t *cpu)
                 return;
         }
 
+        // Type-R
         if (opcode == 0x33u) {
                 unsigned rd = (instr >> 7) & 0x1fu;
                 unsigned rs1 = (instr >> 15) & 0x1fu;
