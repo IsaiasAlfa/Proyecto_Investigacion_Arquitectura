@@ -162,9 +162,10 @@ stage_wb(rv32_t *cpu)
         return 0;
 }
 
-static void
-stage_ex(rv32_t *cpu)
+static int
+stage_ex(rv32_t *cpu, uint32 *target)
 {
+        int redirect = 0;
         ex_wb_reg_t next = {0};
 
         if (cpu->id_ex.valid) {
@@ -250,14 +251,19 @@ stage_ex(rv32_t *cpu)
                         }
                 }
         }
+        if (next.valid && !next.illegal_instr && !next.ebreak && next.next_pc != next.pc + 4) {
+                *target = next.next_pc;
+                redirect = 1;
+        }
         cpu->ex_wb = next;
+        return redirect;
 }
 
 static void
-stage_id(rv32_t *cpu)
+stage_id(rv32_t *cpu, int redirect)
 {
         id_ex_reg_t next = {0};
-        if (cpu->if_id.valid) {
+        if (cpu->if_id.valid && !redirect) {
                 if (cpu->if_id.instr == 0x00100073u) { // EBREAK
                         next.valid = 1;
                         next.pc = cpu->if_id.pc;
@@ -278,21 +284,25 @@ stage_id(rv32_t *cpu)
 }
 
 static void
-stage_if(rv32_t *cpu)
+stage_if(rv32_t *cpu, int redirect, uint32 target)
 {
-        uint8 bytes[4];
-        uint32 pc = cpu->fetch_pc;
+        if (redirect) {
+                cpu->fetch_pc = target;
+        } else {
+                uint8 bytes[4];
+                uint32 pc = cpu->fetch_pc;
 
-        // Search the instruction in memory
-        if (read_simics_memory(cpu, pc, bytes, sizeof bytes)) {
-                cpu->if_id.instr = (uint32)bytes[0]
-                        | ((uint32)bytes[1] << 8)
-                        | ((uint32)bytes[2] << 16)
-                        | ((uint32)bytes[3] << 24);
-                cpu->if_id.valid = 1;
-                cpu->if_id.pc = pc;
-                cpu->fetch_pc += 4u;
-                return;
+                // Search the instruction in memory
+                if (read_simics_memory(cpu, pc, bytes, sizeof bytes)) {
+                        cpu->if_id.instr = (uint32)bytes[0]
+                                | ((uint32)bytes[1] << 8)
+                                | ((uint32)bytes[2] << 16)
+                                | ((uint32)bytes[3] << 24);
+                        cpu->if_id.valid = 1;
+                        cpu->if_id.pc = pc;
+                        cpu->fetch_pc += 4u;
+                        return;
+                }
         }
         cpu->if_id.valid = 0;
 }
@@ -300,14 +310,15 @@ stage_if(rv32_t *cpu)
 void
 execute(rv32_t *cpu)
 {
+        uint32 target = 0;
         int wb_halted;
         wb_halted = stage_wb(cpu);
         if (wb_halted) {
                 return;
         }
-        stage_ex(cpu);
-        stage_id(cpu);
-        stage_if(cpu);
+        int redirect = stage_ex(cpu, &target);
+        stage_id(cpu, redirect);
+        stage_if(cpu, redirect, target);
         increment_cycle(cpu);
 }
 
