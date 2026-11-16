@@ -82,7 +82,7 @@ static uint32
 imm_b(uint32 instr)
 {
         uint32 imm = ((instr >> 7) & 0x1eu) | ((instr >> 20) & 0x7e0u)
-                     | ((instr << 4) & 0x800u) | ((instr >> 19) & 0x1000u);
+                        | ((instr << 4) & 0x800u) | ((instr >> 19) & 0x1000u);
 
         if (imm & 0x1000u)
                 imm |= 0xffffe000u;
@@ -94,7 +94,7 @@ static uint32
 imm_j(uint32 instr)
 {
         uint32 imm = ((instr >> 20) & 0x7feu) | ((instr >> 9) & 0x800u)
-                     | (instr & 0xff000u) | ((instr >> 11) & 0x100000u);
+                        | (instr & 0xff000u) | ((instr >> 11) & 0x100000u);
 
         if (imm & 0x100000u)
                 imm |= 0xffe00000u;
