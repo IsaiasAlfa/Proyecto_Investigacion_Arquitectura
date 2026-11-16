@@ -17,14 +17,52 @@
 #include "cosim-core.h"
 
 #define RV32_NUM_REGS   32
+typedef struct decoded_instruction {
+        uint32 opcode;
+        unsigned rd;
+        uint32 funct3;
+        unsigned rs1;
+        unsigned rs2;
+        uint32 funct7;
+        uint32 imm;
+} decoded_instruction_t;
+typedef struct if_id_reg {
+        int valid;
+        uint32 pc;
+        uint32 instr;
+} if_id_reg_t;
 
+typedef struct id_ex_reg {
+        int valid;
+        uint32 pc;
+        uint32 instr;
+        decoded_instruction_t decoded;
+        uint32 rs1_val;
+        uint32 rs2_val;
+        int ebreak;
+} id_ex_reg_t;
+
+typedef struct ex_wb_reg {
+        int valid;
+        uint32 pc;
+        uint32 next_pc;
+        uint32 instr;
+        decoded_instruction_t decoded;
+        uint32 result;
+        int write_rd;
+        int ebreak;
+        int illegal_instr;
+} ex_wb_reg_t;
 typedef struct rv32 {
         cosim_core_t *core;  /* pass to cosim_core_* functions */
         conf_object_t *obj;  /* the core object, for SIM_LOG_* */
 
         uint32 pc;
+        uint32 fetch_pc;
         uint32 x[RV32_NUM_REGS];   /* use reg_read_x/reg_write_x: x0 is zero */
-
+        if_id_reg_t if_id;
+        id_ex_reg_t id_ex;
+        ex_wb_reg_t ex_wb;
 } rv32_t;
 
 bool read_simics_memory(rv32_t *cpu, uint32 addr, uint8 *buf, unsigned len);
