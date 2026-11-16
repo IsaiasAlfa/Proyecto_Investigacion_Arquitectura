@@ -1,0 +1,89 @@
+# Prueba mixta: bucles, llamadas a subrutina y retorno, saltos encadenados,
+# ida y vuelta sobre código saltado, x0, signo en branches y jalr calculado.
+# Las instrucciones que NO deben ejecutarse suman a x10; al final x10 = 0.
+# La subrutina SUB (0xd8) hace x12 = 2 * x11 y regresa con jalr x0, 0(x5).
+
+# --- 1. Bucle hacia atrás: x2 = 0 + 1 + 2 + 3 + 4 ---
+addi  x10, x0, 0            # 0x00  x10 = 0 (errores)
+addi  x1, x0, 5             # 0x04  n = 5
+addi  x2, x0, 0             # 0x08  suma = 0
+addi  x3, x0, 0             # 0x0c  i = 0
+add   x2, x2, x3            # 0x10  suma += i       <- inicio del bucle
+addi  x3, x3, 1             # 0x14  i++
+blt   x3, x1, -8            # 0x18  si i < n vuelve a 0x10
+
+# --- 2. Dos llamadas a SUB; la segunda usa el resultado de la primera ---
+addi  x11, x2, 0            # 0x1c  x11 = 10
+jal   x5, 184               # 0x20  llama a SUB (0xd8), x5 = 0x24
+addi  x13, x12, 0           # 0x24  x13 = 20
+addi  x11, x13, 1           # 0x28  x11 = 21
+jal   x5, 172               # 0x2c  llama a SUB (0xd8), x5 = 0x30
+addi  x14, x12, 0           # 0x30  x14 = 42
+
+# --- 3. Salto que cae en otro salto ---
+jal   x0, 8                 # 0x34  -> 0x3c
+addi  x10, x10, 1           # 0x38  NO se ejecuta
+jal   x6, 12                # 0x3c  x6 = 0x40, -> 0x48
+addi  x10, x10, 1           # 0x40  NO se ejecuta
+addi  x10, x10, 1           # 0x44  NO se ejecuta
+
+# --- 4. Fibonacci hasta pasar 50; la condición sale de un slt ---
+addi  x15, x0, 0            # 0x48  a = 0
+addi  x16, x0, 1            # 0x4c  b = 1
+addi  x17, x0, 50           # 0x50  límite
+add   x18, x15, x16         # 0x54  t = a + b      <- inicio del bucle
+addi  x15, x16, 0           # 0x58  a = b
+addi  x16, x18, 0           # 0x5c  b = t
+slt   x19, x17, x16         # 0x60  x19 = (50 < b)
+beq   x19, x0, -16          # 0x64  si b <= 50 vuelve a 0x54
+
+# --- 5. x0 y branches con signo sobre valores recién escritos ---
+addi  x0, x0, 7             # 0x68  x0 sigue en 0
+add   x20, x0, x0           # 0x6c  x20 = 0
+bne   x0, x20, 8            # 0x70  no tomado (0 == 0)
+addi  x21, x0, -1           # 0x74  x21 = 0xffffffff
+srai  x22, x21, 4           # 0x78  x22 = 0xffffffff (sra conserva el signo)
+bltu  x22, x1, 8            # 0x7c  no tomado (0xffffffff < 5 sin signo es falso)
+addi  x23, x0, 1            # 0x80  x23 = 1
+blt   x22, x1, 8            # 0x84  tomado (-1 < 5 con signo) -> 0x8c
+addi  x10, x10, 4           # 0x88  NO se ejecuta
+
+# --- 6. jalr con destino calculado desde auipc (offset impar) ---
+auipc x7, 0                 # 0x8c  x7 = 0x8c
+jalr  x8, 21(x7)            # 0x90  0x8c + 21 = 0xa1 -> 0xa0; x8 = 0x94
+addi  x10, x10, 8           # 0x94  NO se ejecuta
+addi  x10, x10, 8           # 0x98  NO se ejecuta
+addi  x10, x10, 8           # 0x9c  NO se ejecuta
+addi  x24, x8, 0            # 0xa0  x24 = 0x94
+
+# --- 7. Saltar un bloque, volver a ejecutarlo y seguir adelante ---
+jal   x0, 12                # 0xa4  -> 0xb0 (deja atrás 0xa8 y 0xac)
+addi  x25, x0, 7            # 0xa8  x25 = 7 (se ejecuta al volver)
+jal   x0, 12                # 0xac  -> 0xb8
+jal   x9, -8                # 0xb0  x9 = 0xb4, vuelve a 0xa8
+addi  x10, x10, 16          # 0xb4  NO se ejecuta
+
+# --- 8. Llamada dentro de un bucle: x11 se duplica 3 veces ---
+addi  x11, x0, 1            # 0xb8  x11 = 1
+addi  x27, x0, 3            # 0xbc  contador = 3
+jal   x5, 24                # 0xc0  llama a SUB (0xd8)  <- inicio del bucle
+addi  x11, x12, 0           # 0xc4  x11 = x12
+addi  x27, x27, -1          # 0xc8  contador--
+bne   x27, x0, -12          # 0xcc  si contador != 0 vuelve a 0xc0
+addi  x26, x11, 0           # 0xd0  x26 = 8
+jal   x0, 12                # 0xd4  salta sobre SUB -> 0xe0
+
+# --- SUB: x12 = 2 * x11; regresa a x5 ---
+slli  x12, x11, 1           # 0xd8
+jalr  x0, 0(x5)             # 0xdc
+ebreak                      # 0xe0
+
+# Estado final esperado (resto de registros en 0):
+#   x1  = 0x00000005   x2  = 0x0000000a   x3  = 0x00000005   x5  = 0x000000c4
+#   x6  = 0x00000040   x7  = 0x0000008c   x8  = 0x00000094   x9  = 0x000000b4
+#   x10 = 0x00000000   x11 = 0x00000008   x12 = 0x00000008   x13 = 0x00000014
+#   x14 = 0x0000002a   x15 = 0x00000022   x16 = 0x00000037   x17 = 0x00000032
+#   x18 = 0x00000037   x19 = 0x00000001   x20 = 0x00000000   x21 = 0xffffffff
+#   x22 = 0xffffffff   x23 = 0x00000001   x24 = 0x00000094   x25 = 0x00000007
+#   x26 = 0x00000008   x27 = 0x00000000
+#   pc = 0xe0, 117 pasos

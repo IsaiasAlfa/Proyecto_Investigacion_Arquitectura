@@ -1,0 +1,55 @@
+# Prueba de instrucciones tipo B: beq, bne, blt, bge, bltu, bgeu
+# Cada branch tomado salta una instrucción "de error" que suma a x10.
+# Si todo funciona, x10 termina en 0 y x11..x18 en 1.
+addi  x1, x0, 5             # 0x00  x1 = 5
+addi  x2, x0, 5             # 0x04  x2 = 5
+addi  x3, x0, -1            # 0x08  x3 = 0xffffffff  (-1 con signo, máximo sin signo)
+addi  x4, x0, 1             # 0x0c  x4 = 1
+
+beq   x1, x2, 8             # 0x10  tomado (5 == 5) -> 0x18
+addi  x10, x10, 1           # 0x14  NO se ejecuta
+addi  x11, x0, 1            # 0x18  x11 = 1
+
+beq   x1, x4, 8             # 0x1c  no tomado (5 != 1)
+addi  x12, x0, 1            # 0x20  x12 = 1
+
+bne   x1, x4, 8             # 0x24  tomado (5 != 1) -> 0x2c
+addi  x10, x10, 2           # 0x28  NO se ejecuta
+addi  x13, x0, 1            # 0x2c  x13 = 1
+
+blt   x3, x4, 8             # 0x30  tomado (-1 < 1 con signo) -> 0x38
+addi  x10, x10, 4           # 0x34  NO se ejecuta
+addi  x14, x0, 1            # 0x38  x14 = 1
+
+bltu  x3, x4, 8             # 0x3c  no tomado (0xffffffff < 1 sin signo es falso)
+addi  x15, x0, 1            # 0x40  x15 = 1
+
+bge   x4, x3, 8             # 0x44  tomado (1 >= -1 con signo) -> 0x4c
+addi  x10, x10, 8           # 0x48  NO se ejecuta
+addi  x16, x0, 1            # 0x4c  x16 = 1
+
+bge   x1, x2, 8             # 0x50  tomado (5 >= 5, caso igual) -> 0x58
+addi  x10, x10, 16          # 0x54  NO se ejecuta
+addi  x17, x0, 1            # 0x58  x17 = 1
+
+bgeu  x4, x3, 8             # 0x5c  no tomado (1 >= 0xffffffff sin signo es falso)
+addi  x18, x0, 1            # 0x60  x18 = 1
+
+addi  x5, x0, 0             # 0x64  x5 = 0  (contador)
+addi  x6, x0, 3             # 0x68  x6 = 3  (límite)
+addi  x5, x5, 1             # 0x6c  x5++
+bne   x5, x6, -4            # 0x70  offset negativo: vuelve a 0x6c mientras x5 != 3
+
+beq   x0, x0, 8             # 0x74  tomado (x0 == x0) -> 0x7c
+addi  x10, x10, 32          # 0x78  NO se ejecuta
+ebreak                      # 0x7c
+
+# Estado final esperado (resto de registros en 0):
+#   x1 = 0x00000005   x2 = 0x00000005   x3 = 0xffffffff   x4 = 0x00000001
+#   x5 = 0x00000003   x6 = 0x00000003   x10 = 0x00000000
+#   x11 .. x18 = 0x00000001
+#   pc = 0x7c, 30 pasos
+# Si x10 != 0, sus bits dicen qué branch falló:
+#   bit 0 beq, bit 1 bne, bit 2 blt, bit 3 bge, bit 4 bge (igual), bit 5 beq x0
+# Si x12, x15 o x18 quedan en 0, un branch que no debía tomarse se tomó.
+# Si x5 != 3, falla el offset negativo.

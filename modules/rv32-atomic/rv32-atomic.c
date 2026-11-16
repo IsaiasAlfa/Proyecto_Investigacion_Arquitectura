@@ -90,6 +90,18 @@ imm_b(uint32 instr)
         return imm;
 }
 
+static uint32
+imm_j(uint32 instr)
+{
+        uint32 imm = ((instr >> 20) & 0x7feu) | ((instr >> 9) & 0x800u)
+                     | (instr & 0xff000u) | ((instr >> 11) & 0x100000u);
+
+        if (imm & 0x100000u)
+                imm |= 0xffe00000u;
+
+        return imm;
+}
+
 static decoded_instruction_t
 decode(uint32 instr)
 {
@@ -115,6 +127,9 @@ decode(uint32 instr)
                         break;
                 case 0x63u:
                         decoded.imm = imm_b(instr);
+                        break;
+                case 0x6fu:
+                        decoded.imm = imm_j(instr);
                         break;
                 default:
                         break;
@@ -180,6 +195,12 @@ execute(rv32_t *cpu)
 
                         break;
                 }
+                case 0x67u: { // JALR
+                        result = next_pc;
+                        next_pc = (rs1_val + decoded.imm) & ~1u;
+                        write_rd = 1;
+                        break;
+                }
                 case 0x33u: { // OP
                         if (!alu_r(decoded.funct3, decoded.funct7,
                                         rs1_val,
@@ -213,6 +234,13 @@ execute(rv32_t *cpu)
                         }
                         break;
                 }
+                case 0x6fu: { // JAL
+                        result = next_pc;
+                        next_pc = pc + decoded.imm;
+                        write_rd = 1;
+                        break;
+                }
+
                 default:
                         illegal_instruction(cpu, pc, instr);
                         return;
