@@ -1,0 +1,48 @@
+# Prueba de saltos incondicionales: jal y jalr
+# Cada instrucción que se debe saltar suma a x10; si todo funciona x10 queda en 0.
+addi  x10, x0, 0            # 0x00  x10 = 0
+jal   x2, 12                # 0x04  x2 = 0x08 (pc + 4), salta a 0x10
+addi  x10, x10, 1           # 0x08  NO se ejecuta
+addi  x10, x10, 1           # 0x0c  NO se ejecuta
+addi  x11, x0, 1            # 0x10  x11 = 1
+
+jal   x0, 12                # 0x14  salto sin enlace (x0 sigue en 0) -> 0x20
+addi  x12, x0, 1            # 0x18  x12 = 1  (se llega desde 0x20)
+jal   x0, 12                # 0x1c  -> 0x28
+jal   x3, -8                # 0x20  offset negativo: x3 = 0x24, salta a 0x18
+addi  x10, x10, 2           # 0x24  NO se ejecuta
+
+addi  x4, x0, 0x38          # 0x28  x4 = 0x38
+jalr  x5, 0(x4)             # 0x2c  x5 = 0x30, salta a 0x38
+addi  x10, x10, 4           # 0x30  NO se ejecuta
+addi  x10, x10, 4           # 0x34  NO se ejecuta
+addi  x13, x0, 1            # 0x38  x13 = 1
+
+jalr  x6, 17(x4)            # 0x3c  0x38 + 17 = 0x49, bit 0 a cero -> 0x48; x6 = 0x40
+addi  x10, x10, 8           # 0x40  NO se ejecuta
+addi  x10, x10, 8           # 0x44  NO se ejecuta
+addi  x14, x0, 1            # 0x48  x14 = 1
+
+addi  x7, x0, 0x58          # 0x4c  x7 = 0x58
+jalr  x7, 0(x7)             # 0x50  rd == rs1: salta a 0x58 (valor viejo), luego x7 = 0x54
+addi  x10, x10, 16          # 0x54  NO se ejecuta
+addi  x15, x0, 1            # 0x58  x15 = 1
+
+addi  x8, x0, 0x74          # 0x5c  x8 = 0x74
+jalr  x9, -8(x8)            # 0x60  offset negativo: salta a 0x6c, x9 = 0x64
+addi  x10, x10, 32          # 0x64  NO se ejecuta
+addi  x10, x10, 32          # 0x68  NO se ejecuta
+addi  x16, x0, 1            # 0x6c  x16 = 1
+ebreak                      # 0x70
+
+# Estado final esperado (resto de registros en 0):
+#   x2 = 0x00000008   x3 = 0x00000024   x4 = 0x00000038   x5 = 0x00000030
+#   x6 = 0x00000040   x7 = 0x00000054   x8 = 0x00000074   x9 = 0x00000064
+#   x10 = 0x00000000  x11 .. x16 = 0x00000001
+#   pc = 0x70, 19 pasos
+# Si x10 != 0, algún salto cayó en una instrucción que debía saltarse:
+#   1-2 jal, 2 jal hacia atrás, 4-8 jalr, 8-16 jalr con bit 0 (&~1),
+#   16 jalr con rd == rs1, 32-64 jalr con offset negativo
+# Si x11..x16 alguno queda en 0, ese salto se fue a otro lado.
+# Si el core se detiene en 0x49: falta el & ~1 en jalr.
+# Si x7 = 0x54 pero se salta a otro lado: se escribió rd antes de calcular el destino.

@@ -36,6 +36,21 @@ alu_r(uint32 funct3, uint32 funct7, uint32 a, uint32 b, uint32 *result)
         }
 }
 
+static int 
+branch_r(uint32 funct3, uint32 a, uint32 b, int *branch_taken)
+{
+        switch (funct3) {
+                case 0x0u: *branch_taken = a == b; return 1; // beq
+                case 0x1u: *branch_taken = a != b; return 1; // bne
+                case 0x4u: *branch_taken = (int32_t)a < (int32_t)b; return 1; // blt
+                case 0x5u: *branch_taken = (int32_t)a >= (int32_t)b; return 1; // bge
+                case 0x6u: *branch_taken = a < b; return 1; // bltu
+                case 0x7u: *branch_taken = a >= b; return 1; // bgeu
+                default: return 0;
+        }
+}
+
+
 typedef struct decoded_instruction {
         uint32 opcode;
         unsigned rd;
@@ -63,6 +78,18 @@ imm_u(uint32 instr)
         return instr & 0xfffff000u;
 }
 
+static uint32
+imm_b(uint32 instr)
+{
+        uint32 imm = ((instr >> 7) & 0x1eu) | ((instr >> 20) & 0x7e0u)
+                     | ((instr << 4) & 0x800u) | ((instr >> 19) & 0x1000u);
+
+        if (imm & 0x1000u)
+                imm |= 0xffffe000u;
+
+        return imm;
+}
+
 static decoded_instruction_t
 decode(uint32 instr)
 {
@@ -85,6 +112,9 @@ decode(uint32 instr)
                 case 0x37u:
                 case 0x17u:
                         decoded.imm = imm_u(instr);
+                        break;
+                case 0x63u:
+                        decoded.imm = imm_b(instr);
                         break;
                 default:
                         break;
@@ -133,7 +163,7 @@ execute(rv32_t *cpu)
 
         // switch on the opcode to determine the instruction type and execute it
         switch (decoded.opcode) {
-                case 0x13u: { // OP-IMM
+                case 0x13u: { // OP_IMM
                         int is_shift = (decoded.funct3 == 1u || decoded.funct3 == 5u);
                         uint32 operand;
 
@@ -150,7 +180,6 @@ execute(rv32_t *cpu)
 
                         break;
                 }
-
                 case 0x33u: { // OP
                         if (!alu_r(decoded.funct3, decoded.funct7,
                                         rs1_val,
@@ -171,6 +200,17 @@ execute(rv32_t *cpu)
                 case 0x17u: { // AUIPC
                         result = pc + decoded.imm;
                         write_rd = 1;
+                        break;
+                }
+                case 0x63u: { // BRANCH
+                        int branch_taken = 0;
+                        if (!branch_r(decoded.funct3, rs1_val, rs2_val, &branch_taken)) {
+                                illegal_instruction(cpu, pc, instr);
+                                return;
+                        }
+                        if (branch_taken) {
+                                next_pc = pc + decoded.imm;
+                        }
                         break;
                 }
                 default:
