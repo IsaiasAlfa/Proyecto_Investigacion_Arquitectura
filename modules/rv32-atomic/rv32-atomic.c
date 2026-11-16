@@ -119,72 +119,74 @@ execute(rv32_t *cpu)
                 return;
         }
 
+        // Decode the instruction
         decoded_instruction_t decoded = decode(instr);
 
-        // Type-I
-        if (decoded.opcode == 0x13u) {
-                int is_shift = (decoded.funct3 == 1u || decoded.funct3 == 5u);
-                uint32 operand;
-                uint32 result;
+        // Read the source registers
+        uint32 rs1_val = reg_read_x(cpu, decoded.rs1);
+        uint32 rs2_val = reg_read_x(cpu, decoded.rs2);
 
-                // Shift only use imm[4:0]
-                operand = decoded.imm;
+        // Prepare for the result and next PC
+        uint32 result = 0u;
+        int write_rd = 0;
+        uint32 next_pc = pc + 4u;
 
-                if (!alu_r(decoded.funct3, is_shift ? decoded.funct7 : 0u,
-                           reg_read_x(cpu, decoded.rs1),
-                           operand, &result)) {
-                        illegal_instruction(cpu, pc, instr);
-                        return;
+        // switch on the opcode to determine the instruction type and execute it
+        switch (decoded.opcode) {
+                case 0x13u: { // OP-IMM
+                        int is_shift = (decoded.funct3 == 1u || decoded.funct3 == 5u);
+                        uint32 operand;
+
+                        // Shift only use imm[4:0]
+                        operand = decoded.imm;
+
+                        if (!alu_r(decoded.funct3, is_shift ? decoded.funct7 : 0u,
+                                        rs1_val,
+                                        operand, &result)) {
+                                illegal_instruction(cpu, pc, instr);
+                                return;
+                        }
+                        write_rd = 1;
+
+                        break;
                 }
 
-                reg_write_x(cpu, decoded.rd, result);
-                cpu->pc = pc + 4u;
+                case 0x33u: { // OP
+                        if (!alu_r(decoded.funct3, decoded.funct7,
+                                        rs1_val,
+                                        rs2_val,
+                                        &result)) {
+                                illegal_instruction(cpu, pc, instr);
+                                return;
+                        }
 
-                increment_cycle(cpu);
-                increment_step(cpu);
-                return;
-        }
-
-        // Type-R
-        if (decoded.opcode == 0x33u) {
-                uint32 result;
-
-                if (!alu_r(decoded.funct3, decoded.funct7,
-                            reg_read_x(cpu, decoded.rs1),
-                            reg_read_x(cpu, decoded.rs2),
-                            &result)) {
+                        write_rd = 1;
+                        break;
+                }
+                case 0x37u: { // LUI
+                        result = decoded.imm;
+                        write_rd = 1;
+                        break;
+                }
+                case 0x17u: { // AUIPC
+                        result = pc + decoded.imm;
+                        write_rd = 1;
+                        break;
+                }
+                default:
                         illegal_instruction(cpu, pc, instr);
                         return;
-                }
+        }
 
+        // Write the result to the destination register if needed
+        if (write_rd) {
                 reg_write_x(cpu, decoded.rd, result);
-                cpu->pc = pc + 4u;
-
-                increment_cycle(cpu);
-                increment_step(cpu);
-                return;
         }
 
-        if (decoded.opcode == 0x37u) {
-                reg_write_x(cpu, decoded.rd, decoded.imm);
-                cpu->pc = pc + 4u;
-
-                increment_cycle(cpu);
-                increment_step(cpu);
-                return;
-        }
-
-        if (decoded.opcode == 0x17u) {
-                reg_write_x(cpu, decoded.rd, pc + decoded.imm);
-                cpu->pc = pc + 4u;
-
-                increment_cycle(cpu);
-                increment_step(cpu);
-                return;
-        }
-
-        /*TODO: Demas instrucciones*/
-        illegal_instruction(cpu, pc, instr);
+        // Update the program counter to the next instruction
+        cpu->pc = next_pc;
+        increment_cycle(cpu);
+        increment_step(cpu);
 }
 
 /* Text for Simics' disassemble CLI command (e.g. "disassemble 0x0 10")
