@@ -120,6 +120,30 @@ execute(rv32_t *cpu)
                 return;
         }
 
+        if (opcode == 0x37u) {
+                unsigned rd = (instr >> 7) & 0x1fu;
+                uint32 imm = instr & 0xfffff000u;
+
+                reg_write_x(cpu, rd, imm);
+                cpu->pc = pc + 4u;
+
+                increment_cycle(cpu);
+                increment_step(cpu);
+                return;
+        }
+
+        if (opcode == 0x17u) {
+                unsigned rd = (instr >> 7) & 0x1fu;
+                uint32 imm = instr & 0xfffff000u;
+
+                reg_write_x(cpu, rd, pc + imm);
+                cpu->pc = pc + 4u;
+
+                increment_cycle(cpu);
+                increment_step(cpu);
+                return;
+        }
+
         /*TODO: Demas instrucciones*/
         illegal_instruction(cpu, pc, instr);
 }
