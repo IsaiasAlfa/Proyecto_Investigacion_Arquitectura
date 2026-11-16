@@ -128,7 +128,7 @@ execute(rv32_t *cpu)
                 uint32 result;
 
                 // Shift only use imm[4:0]
-                operand = is_shift ? (instr >> 20) : decoded.imm;
+                operand = decoded.imm;
 
                 if (!alu_r(decoded.funct3, is_shift ? decoded.funct7 : 0u,
                            reg_read_x(cpu, decoded.rs1),
