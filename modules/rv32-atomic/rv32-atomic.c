@@ -73,7 +73,7 @@ execute(rv32_t *cpu)
                 int is_shift = (funct3 == 1u || funct3 == 5u);
                 uint32 funct7 = is_shift ? (instr >> 25) : 0u;
                 uint32 operand;
-                uint result;
+                uint32 result;
 
                 if (imm & 0x800u)
                         imm |= 0xfffff000u;
