@@ -36,6 +36,63 @@ alu_r(uint32 funct3, uint32 funct7, uint32 a, uint32 b, uint32 *result)
         }
 }
 
+typedef struct decoded_instruction {
+        uint32 opcode;
+        unsigned rd;
+        uint32 funct3;
+        unsigned rs1;
+        unsigned rs2;
+        uint32 funct7;
+        uint32 imm;
+} decoded_instruction_t;
+
+static uint32
+imm_i(uint32 instr)
+{
+        uint32 imm = instr >> 20;
+
+        if (imm & 0x800u)
+                imm |= 0xfffff000u;
+
+        return imm;
+}
+
+static uint32
+imm_u(uint32 instr)
+{
+        return instr & 0xfffff000u;
+}
+
+static decoded_instruction_t
+decode(uint32 instr)
+{
+        decoded_instruction_t decoded;
+
+        decoded.opcode = instr & 0x7fu;
+        decoded.rd = (instr >> 7) & 0x1fu;
+        decoded.funct3 = (instr >> 12) & 0x7u;
+        decoded.rs1 = (instr >> 15) & 0x1fu;
+        decoded.rs2 = (instr >> 20) & 0x1fu;
+        decoded.funct7 = (instr >> 25) & 0x7fu;
+        decoded.imm = 0u;
+
+        switch (decoded.opcode) {
+                case 0x13u:
+                case 0x67u:
+                case 0x73u:
+                        decoded.imm = imm_i(instr);
+                        break;
+                case 0x37u:
+                case 0x17u:
+                        decoded.imm = imm_u(instr);
+                        break;
+                default:
+                        break;
+        }
+
+        return decoded;
+}
+
 void
 execute(rv32_t *cpu)
 {
@@ -62,33 +119,25 @@ execute(rv32_t *cpu)
                 return;
         }
 
-        uint32 opcode = instr & 0x7fu;
-        uint32 funct3 = (instr >> 12) & 0x7u;
+        decoded_instruction_t decoded = decode(instr);
 
         // Type-I
-        if (opcode == 0x13u) {
-                unsigned rd = (instr >> 7) & 0x1fu;
-                unsigned rs1 = (instr >> 15) & 0x1fu;
-                uint32 imm = instr >> 20;
-                int is_shift = (funct3 == 1u || funct3 == 5u);
-                uint32 funct7 = is_shift ? (instr >> 25) : 0u;
+        if (decoded.opcode == 0x13u) {
+                int is_shift = (decoded.funct3 == 1u || decoded.funct3 == 5u);
                 uint32 operand;
                 uint32 result;
 
-                if (imm & 0x800u)
-                        imm |= 0xfffff000u;
-
                 // Shift only use imm[4:0]
-                operand = is_shift ? (instr >> 20) : imm;
+                operand = is_shift ? (instr >> 20) : decoded.imm;
 
-                if (!alu_r(funct3, funct7,
-                           reg_read_x(cpu, rs1),
+                if (!alu_r(decoded.funct3, is_shift ? decoded.funct7 : 0u,
+                           reg_read_x(cpu, decoded.rs1),
                            operand, &result)) {
                         illegal_instruction(cpu, pc, instr);
                         return;
                 }
 
-                reg_write_x(cpu, rd, result);
+                reg_write_x(cpu, decoded.rd, result);
                 cpu->pc = pc + 4u;
 
                 increment_cycle(cpu);
@@ -97,22 +146,18 @@ execute(rv32_t *cpu)
         }
 
         // Type-R
-        if (opcode == 0x33u) {
-                unsigned rd = (instr >> 7) & 0x1fu;
-                unsigned rs1 = (instr >> 15) & 0x1fu;
-                unsigned rs2 = (instr >> 20) & 0x1fu;
-                uint32 funct7 = instr >>25;
+        if (decoded.opcode == 0x33u) {
                 uint32 result;
 
-                if (!alu_r(funct3, funct7,
-                            reg_read_x(cpu, rs1),
-                            reg_read_x(cpu, rs2),
+                if (!alu_r(decoded.funct3, decoded.funct7,
+                            reg_read_x(cpu, decoded.rs1),
+                            reg_read_x(cpu, decoded.rs2),
                             &result)) {
                         illegal_instruction(cpu, pc, instr);
                         return;
                 }
 
-                reg_write_x(cpu, rd, result);
+                reg_write_x(cpu, decoded.rd, result);
                 cpu->pc = pc + 4u;
 
                 increment_cycle(cpu);
@@ -120,11 +165,8 @@ execute(rv32_t *cpu)
                 return;
         }
 
-        if (opcode == 0x37u) {
-                unsigned rd = (instr >> 7) & 0x1fu;
-                uint32 imm = instr & 0xfffff000u;
-
-                reg_write_x(cpu, rd, imm);
+        if (decoded.opcode == 0x37u) {
+                reg_write_x(cpu, decoded.rd, decoded.imm);
                 cpu->pc = pc + 4u;
 
                 increment_cycle(cpu);
@@ -132,11 +174,8 @@ execute(rv32_t *cpu)
                 return;
         }
 
-        if (opcode == 0x17u) {
-                unsigned rd = (instr >> 7) & 0x1fu;
-                uint32 imm = instr & 0xfffff000u;
-
-                reg_write_x(cpu, rd, pc + imm);
+        if (decoded.opcode == 0x17u) {
+                reg_write_x(cpu, decoded.rd, pc + decoded.imm);
                 cpu->pc = pc + 4u;
 
                 increment_cycle(cpu);
