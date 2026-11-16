@@ -124,6 +124,15 @@ decode(uint32 instr)
         return decoded;
 }
 
+static uint32
+forwarding(rv32_t *cpu, uint32 rs_val, unsigned rs)
+{
+        if (cpu->ex_wb.valid && cpu->ex_wb.write_rd && cpu->ex_wb.decoded.rd == rs && cpu->ex_wb.decoded.rd != 0) {
+                rs_val = cpu->ex_wb.result;
+        }
+        return rs_val;
+}
+
 static int
 stage_wb(rv32_t *cpu)
 {
@@ -167,8 +176,8 @@ stage_ex(rv32_t *cpu)
                 next.ebreak = cpu->id_ex.ebreak;
 
                 if (!next.ebreak) {
-                        uint32 a = cpu->id_ex.rs1_val;
-                        uint32 b = cpu->id_ex.rs2_val;
+                        uint32 a = forwarding(cpu, cpu->id_ex.rs1_val, cpu->id_ex.decoded.rs1);
+                        uint32 b = forwarding(cpu, cpu->id_ex.rs2_val, cpu->id_ex.decoded.rs2);
 
                         // switch on the opcode to determine the instruction type and execute it
                         switch (next.decoded.opcode) {
