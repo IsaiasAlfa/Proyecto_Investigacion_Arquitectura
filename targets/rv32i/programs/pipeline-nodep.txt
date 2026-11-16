@@ -1,0 +1,28 @@
+# Prueba del pipeline SIN forwarding ni saltos (paso P2).
+# Ninguna instrucción usa el resultado de la instrucción justo anterior
+# (distancia 1). Sí hay dependencias a distancia 2 o más, que se resuelven
+# porque WB escribe el banco de registros antes de que ID lo lea.
+addi  x1, x0, 7             # 0x00  x1 = 7
+addi  x2, x0, -3            # 0x04  x2 = 0xfffffffd
+addi  x3, x0, 0x100         # 0x08  x3 = 0x100
+add   x4, x1, x0            # 0x0c  x4 = 7            (x1 a distancia 3)
+lui   x5, 0x12345           # 0x10  x5 = 0x12345000
+sub   x6, x1, x2            # 0x14  x6 = 10           (7 - (-3))
+addi  x7, x5, 0x678         # 0x18  x7 = 0x12345678   (x5 a distancia 2)
+slli  x8, x4, 4             # 0x1c  x8 = 0x70
+xor   x9, x6, x3            # 0x20  x9 = 0x10a        (x6 a distancia 3)
+srai  x10, x2, 1            # 0x24  x10 = 0xfffffffe  (-3 >> 1 = -2)
+auipc x11, 0                # 0x28  x11 = 0x28
+slt   x12, x10, x1          # 0x2c  x12 = 1           (x10 a distancia 2; -2 < 7)
+or    x13, x9, x8           # 0x30  x13 = 0x17a
+addi  x0, x0, 1             # 0x34  x0 sigue en 0
+add   x14, x10, x11         # 0x38  x14 = 0x26        (-2 + 0x28)
+ebreak                      # 0x3c
+
+# Estado final esperado (resto de registros en 0):
+#   x1  = 0x00000007   x2  = 0xfffffffd   x3  = 0x00000100   x4  = 0x00000007
+#   x5  = 0x12345000   x6  = 0x0000000a   x7  = 0x12345678   x8  = 0x00000070
+#   x9  = 0x0000010a   x10 = 0xfffffffe   x11 = 0x00000028   x12 = 0x00000001
+#   x13 = 0x0000017a   x14 = 0x00000026
+#   pc = 0x3c, 16 pasos
+#   Pipeline: 19 ciclos (16 pasos + 3 de llenado, sin saltos)

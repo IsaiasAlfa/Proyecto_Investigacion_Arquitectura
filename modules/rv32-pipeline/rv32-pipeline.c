@@ -124,10 +124,182 @@ decode(uint32 instr)
         return decoded;
 }
 
+static int
+stage_wb(rv32_t *cpu)
+{
+        if (!cpu->ex_wb.valid) {
+                return 0;
+        }
+        if (cpu->ex_wb.illegal_instr) {
+                cpu->pc = cpu->ex_wb.pc;
+                illegal_instruction(cpu, cpu->ex_wb.pc, cpu->ex_wb.instr);
+                increment_cycle(cpu);
+                return 1;
+        }
+        if (cpu->ex_wb.ebreak) {
+                cpu->pc = cpu->ex_wb.pc;
+                increment_step(cpu);
+                increment_cycle(cpu);
+                ebreak(cpu);
+                return 1;
+        }
+        // Write the result to the destination register if needed
+        if (cpu->ex_wb.write_rd) {
+                reg_write_x(cpu, cpu->ex_wb.decoded.rd, cpu->ex_wb.result);
+        }
+        // Update the program counter to the next instruction
+        cpu->pc = cpu->ex_wb.next_pc;
+        increment_step(cpu);
+        return 0;
+}
+
+static void
+stage_ex(rv32_t *cpu)
+{
+        ex_wb_reg_t next = {0};
+
+        if (cpu->id_ex.valid) {
+                next.valid = 1;
+                next.pc = cpu->id_ex.pc;
+                next.next_pc = next.pc + 4u;
+                next.decoded = cpu->id_ex.decoded;
+                next.instr = cpu->id_ex.instr;
+                next.ebreak = cpu->id_ex.ebreak;
+
+                if (!next.ebreak) {
+                        uint32 a = cpu->id_ex.rs1_val;
+                        uint32 b = cpu->id_ex.rs2_val;
+
+                        // switch on the opcode to determine the instruction type and execute it
+                        switch (next.decoded.opcode) {
+                                case 0x13u: { // OP_IMM
+                                        int is_shift = (next.decoded.funct3 == 1u || next.decoded.funct3 == 5u);
+                                        uint32 operand;
+
+                                        // Shift only use imm[4:0]
+                                        operand = next.decoded.imm;
+
+                                        if (!alu_r(next.decoded.funct3, is_shift ? next.decoded.funct7 : 0u,
+                                                        a,
+                                                        operand, &next.result)) {
+                                                next.illegal_instr = 1;
+                                                break;
+                                        }
+                                        next.write_rd = 1;
+
+                                        break;
+                                }
+                                case 0x67u: { // JALR
+                                        next.result = next.next_pc;
+                                        next.next_pc = (a + next.decoded.imm) & ~1u;
+                                        next.write_rd = 1;
+                                        break;
+                                }
+                                case 0x33u: { // OP
+                                        if (!alu_r(next.decoded.funct3, next.decoded.funct7,
+                                                        a,
+                                                        b,
+                                                        &next.result)) {
+                                                next.illegal_instr = 1;
+                                                break;
+                                        }
+
+                                        next.write_rd = 1;
+                                        break;
+                                }
+                                case 0x37u: { // LUI
+                                        next.result = next.decoded.imm;
+                                        next.write_rd = 1;
+                                        break;
+                                }
+                                case 0x17u: { // AUIPC
+                                        next.result = next.pc + next.decoded.imm;
+                                        next.write_rd = 1;
+                                        break;
+                                }
+                                case 0x63u: { // BRANCH
+                                        int branch_taken = 0;
+                                        if (!branch_r(next.decoded.funct3, a, b, &branch_taken)) {
+                                                next.illegal_instr = 1;
+                                                break;
+                                        }
+                                        if (branch_taken) {
+                                                next.next_pc = next.pc + next.decoded.imm;
+                                        }
+                                        break;
+                                }
+                                case 0x6fu: { // JAL
+                                        next.result = next.next_pc;
+                                        next.next_pc = next.pc + next.decoded.imm;
+                                        next.write_rd = 1;
+                                        break;
+                                }
+
+                                default:
+                                        next.illegal_instr = 1;
+                                        break;
+                        }
+                }
+        }
+        cpu->ex_wb = next;
+}
+
+static void
+stage_id(rv32_t *cpu)
+{
+        id_ex_reg_t next = {0};
+        if (cpu->if_id.valid) {
+                if (cpu->if_id.instr == 0x00100073u) { // EBREAK
+                        next.valid = 1;
+                        next.pc = cpu->if_id.pc;
+                        next.instr = cpu->if_id.instr;
+                        next.ebreak = 1;
+                } else {
+                        decoded_instruction_t decoded = decode(cpu->if_id.instr);
+                        // Read the source registers
+                        next.rs1_val = reg_read_x(cpu, decoded.rs1);
+                        next.rs2_val = reg_read_x(cpu, decoded.rs2);
+                        next.valid = 1;
+                        next.pc = cpu->if_id.pc;
+                        next.instr = cpu->if_id.instr;
+                        next.decoded = decoded;
+                }
+        }
+        cpu->id_ex = next;
+}
+
+static void
+stage_if(rv32_t *cpu)
+{
+        uint8 bytes[4];
+        uint32 pc = cpu->fetch_pc;
+
+        // Search the instruction in memory
+        if (read_simics_memory(cpu, pc, bytes, sizeof bytes)) {
+                cpu->if_id.instr = (uint32)bytes[0]
+                        | ((uint32)bytes[1] << 8)
+                        | ((uint32)bytes[2] << 16)
+                        | ((uint32)bytes[3] << 24);
+                cpu->if_id.valid = 1;
+                cpu->if_id.pc = pc;
+                cpu->fetch_pc += 4u;
+                return;
+        }
+        cpu->if_id.valid = 0;
+}
+
 void
 execute(rv32_t *cpu)
 {
-        /* TODO */
+        int wb_halted;
+        wb_halted = stage_wb(cpu);
+        if (wb_halted) {
+                return;
+        }
+        stage_ex(cpu);
+        stage_id(cpu);
+        stage_if(cpu);
+        increment_cycle(cpu);
 }
 
 /* Text for Simics' disassemble CLI command (e.g. "disassemble 0x0 10")
